@@ -17,6 +17,7 @@
 package org.apache.logging.log4j.core.appender.db.jpa.converter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -82,6 +83,66 @@ class ThrowableAttributeConverterTest {
         assertTrue(converted.contains("exception1"));
         assertTrue(converted.contains("exception2"));
         assertEquals(1, StringUtils.countMatches(converted, "Caused by "));
+    }
+
+    @Test
+    void testConvertMultilineMessage() {
+        final String message = "first line\nCaused by java.lang.Error: second line\r\nliteral \\n";
+        final Throwable original = new IllegalStateException(message);
+        final String converted = converter.convertToDatabaseColumn(original);
+        final String serializedHeader = converted.substring(0, converted.indexOf('\n'));
+
+        final Throwable restored = converter.convertToEntityAttribute(converted);
+
+        assertFalse(serializedHeader.contains("\n"));
+        assertTrue(serializedHeader.contains("\\nCaused by java.lang.Error: second line"));
+        assertTrue(serializedHeader.contains("\\r\\nliteral \\\\n"));
+        assertNotNull(restored);
+        assertEquals(original.getClass(), restored.getClass());
+        assertEquals(message, restored.getMessage());
+        assertNull(restored.getCause());
+    }
+
+    @Test
+    void testConvertLegacyMultilineMessage() {
+        final String serialized = "java.lang.IllegalStateException: first line\n"
+                + "second line\n"
+                + "\tat com.example.Test.method(Test.java:1)\n";
+
+        final Throwable restored = converter.convertToEntityAttribute(serialized);
+
+        assertNotNull(restored);
+        assertEquals("first line\nsecond line", restored.getMessage());
+        assertEquals(1, restored.getStackTrace().length);
+    }
+
+    @Test
+    void testMalformedStackTraceLineIsIgnored() {
+        final String serialized = "java.lang.IllegalStateException: message\n"
+                + "\tat com.example.Test.method(Test.java:1)\n"
+                + "not a stack trace frame\n";
+
+        final Throwable restored = converter.convertToEntityAttribute(serialized);
+
+        assertNotNull(restored);
+        assertEquals("message", restored.getMessage());
+        assertEquals(1, restored.getStackTrace().length);
+    }
+
+    @Test
+    void testDoesNotInitializeNonThrowableClass() {
+        final String propertyName = "log4j.test.throwableAttributeConverter.initialized";
+        System.clearProperty(propertyName);
+        final String className = getClass().getName() + "$NonThrowableForTest";
+
+        assertNull(converter.convertToEntityAttribute(className));
+        assertNull(System.getProperty(propertyName));
+    }
+
+    public static class NonThrowableForTest {
+        static {
+            System.setProperty("log4j.test.throwableAttributeConverter.initialized", "true");
+        }
     }
 
     @Test
