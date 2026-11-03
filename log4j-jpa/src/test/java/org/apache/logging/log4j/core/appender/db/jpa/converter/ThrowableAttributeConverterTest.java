@@ -104,6 +104,36 @@ class ThrowableAttributeConverterTest {
     }
 
     @Test
+    void testConvertMultilineMessageWithNoArgumentConstructor() {
+        for (final boolean withCause : new boolean[] {false, true}) {
+            final Throwable original = new NoArgumentException();
+            if (withCause) {
+                original.initCause(new IllegalStateException("cause message"));
+            }
+
+            final Throwable restored = converter.convertToEntityAttribute(converter.convertToDatabaseColumn(original));
+
+            assertNotNull(restored);
+            assertEquals(original.getClass(), restored.getClass());
+            assertEquals(original.getMessage(), restored.getMessage());
+            if (withCause) {
+                assertNotNull(restored.getCause());
+                assertEquals(original.getCause().getClass(), restored.getCause().getClass());
+                assertEquals(
+                        original.getCause().getMessage(), restored.getCause().getMessage());
+            } else {
+                assertNull(restored.getCause());
+            }
+        }
+    }
+
+    public static class NoArgumentException extends Exception {
+        public NoArgumentException() {
+            super("first line\nsecond line");
+        }
+    }
+
+    @Test
     void testConvertLegacyMultilineMessage() {
         final String serialized = "java.lang.IllegalStateException: first line\n"
                 + "second line\n"
